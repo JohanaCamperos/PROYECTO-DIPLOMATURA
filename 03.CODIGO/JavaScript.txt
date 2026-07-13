@@ -1,0 +1,317 @@
+<script>
+  let areaSeleccionada = "";
+  let usuarioActivo = null;
+  let entornoSimuladoAdmin = ""; // Para rastrear qué área está inspeccionando el Administrador
+
+  document.addEventListener("DOMContentLoaded", function() {
+    generarCodigosServicio();
+    establecerFechaHoraPredeterminada();
+  });
+
+  // SISTEMA DE NOTIFICACIONES TOAST (Sustituto de alert)
+  function showToast(message, type = "info") {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `pointer-events-auto min-w-[250px] p-4 rounded-xl shadow-lg border text-xs font-semibold flex items-center space-x-2 transition-all duration-300 transform translate-y-2 opacity-0`;
+    
+    if(type === "success") toast.classList.add('bg-emerald-950', 'text-emerald-200', 'border-emerald-700');
+    else if(type === "error") toast.classList.add('bg-red-950', 'text-red-200', 'border-red-700');
+    else toast.classList.add('bg-blue-950', 'text-blue-200', 'border-blue-700');
+    
+    toast.innerHTML = `<span>${message}</span>`;
+    container.appendChild(toast);
+    
+    setTimeout(() => {
+      toast.classList.remove('translate-y-2', 'opacity-0');
+    }, 50);
+
+    setTimeout(() => {
+      toast.classList.add('opacity-0', 'translate-y-2');
+      setTimeout(() => toast.remove(), 300);
+    }, 3500);
+  }
+
+  function seleccionarArea(area) {
+    areaSeleccionada = area;
+    document.getElementById('auth-title').innerText = "Área: " + area;
+    document.getElementById('tab-registro').style.display = (area === 'Administrador') ? 'none' : 'block';
+    switchAuthTab('login');
+    cambiarVista('view-auth');
+  }
+
+  function volverHome() { cambiarVista('view-home'); }
+
+  function cambiarVista(idVista) {
+    document.querySelectorAll('.view-section').forEach(view => view.classList.add('hidden'));
+    document.getElementById(idVista).classList.remove('hidden');
+  }
+
+  function switchAuthTab(tab) {
+    if(tab === 'login') {
+      document.getElementById('form-login').classList.remove('hidden');
+      document.getElementById('form-registro').classList.add('hidden');
+      document.getElementById('tab-login').className = "w-1/2 pb-2 text-center border-b-2 border-blue-500 font-bold";
+      document.getElementById('tab-registro').className = "w-1/2 pb-2 text-center text-gray-400 border-b-2 border-transparent";
+    } else {
+      document.getElementById('form-login').classList.add('hidden');
+      document.getElementById('form-registro').classList.remove('hidden');
+      document.getElementById('tab-login').className = "w-1/2 pb-2 text-center text-gray-400 border-b-2 border-transparent";
+      document.getElementById('tab-registro').className = "w-1/2 pb-2 text-center border-b-2 border-emerald-500 font-bold";
+    }
+  }
+
+  function togglePasswordVisibility(idInput) {
+    const input = document.getElementById(idInput);
+    const eye = document.getElementById('eye-' + idInput);
+    if(input.type === "password") {
+      input.type = "text";
+      eye.className = "fa-solid fa-eye-slash";
+    } else {
+      input.type = "password";
+      eye.className = "fa-solid fa-eye";
+    }
+  }
+
+  function generarCodigosServicio() {
+    const select = document.getElementById('inf-codigo');
+    select.innerHTML = "";
+    for(let i=1; i<=800; i++) {
+      let code = i.toString().padStart(4, '0');
+      let opt = document.createElement('option');
+      opt.value = code;
+      opt.innerHTML = "Edificio " + code;
+      select.appendChild(opt);
+    }
+  }
+
+  function establecerFechaHoraPredeterminada() {
+    const hoy = new Date();
+    document.getElementById('inf-fecha').value = hoy.toISOString().substring(0, 10);
+    document.getElementById('inf-hora').value = `${hoy.getHours().toString().padStart(2, '0')}:${hoy.getMinutes().toString().padStart(2, '0')}`;
+  }
+
+  function ejecutarRegistro() {
+    const user = document.getElementById('reg-user').value;
+    const email = document.getElementById('reg-email').value;
+    google.script.run.withSuccessHandler(function(res) {
+      showToast(res.message, res.success ? "success" : "error");
+      if(res.success) switchAuthTab('login');
+    }).registrarUsuario(user, email, areaSeleccionada);
+  }
+
+  function ejecutarLogin() {
+    const user = document.getElementById('login-user').value;
+    const pass = document.getElementById('login-pass').value;
+    
+    google.script.run.withSuccessHandler(function(res) {
+      if(res.success) {
+        usuarioActivo = res.user;
+        
+        if(usuarioActivo.area !== areaSeleccionada && areaSeleccionada !== 'Administrador') {
+          showToast("Acceso denegado: Área errónea.", "error");
+          return;
+        }
+        
+        if(usuarioActivo.esTemporal) {
+          cambiarVista('view-force-password');
+        } else {
+          entrarAlDashboard();
+        }
+      } else {
+        showToast(res.message, "error");
+      }
+    }).loginUsuario(user, pass);
+  }
+
+  function cambiarPasswordObligatoria() {
+    const newPass = document.getElementById('new-pass').value;
+    google.script.run.withSuccessHandler(function(res) {
+      if(res.success) {
+        showToast("Contraseña maestra actualizada.", "success");
+        entrarAlDashboard();
+      } else {
+        showToast(res.message, "error");
+      }
+    }).actualizarPassword(usuarioActivo.username, newPass);
+  }
+
+  // ENTRAR AL DASHBOARD
+  function entrarAlDashboard() {
+    document.getElementById('txt-user-display').innerHTML = `<i class="fa-solid fa-user mr-1"></i> ${usuarioActivo.username}`;
+    
+    if(usuarioActivo.area === 'Administrador') {
+      document.getElementById('admin-selector-wrapper').classList.remove('hidden');
+      entornoSimuladoAdmin = "Monitoreo"; // Valor por defecto inicial
+      document.getElementById('admin-area-select').value = "Monitoreo";
+      construirInterfazSegunArea("Monitoreo");
+    } else {
+      document.getElementById('admin-selector-wrapper').classList.add('hidden');
+      construirInterfazSegunArea(usuarioActivo.area);
+    }
+    cambiarVista('view-dashboard');
+  }
+
+  // ACCIÓN DEL SELECTOR ADMINISTRADOR
+  function cambiarEntornoAdmin(areaElegida) {
+    entornoSimuladoAdmin = areaElegida;
+    construirInterfazSegunArea(areaElegida);
+    showToast("Entorno cambiado a: " + areaElegida, "info");
+  }
+
+  // CONTRUCTOR DE MENÚS FLOTANTES SEGÚN ROL REAL O SIMULADO
+  function construirInterfazSegunArea(areaVisualizar) {
+    document.getElementById('badge-area').innerText = (usuarioActivo.area === 'Administrador') ? `Admin (${areaVisualizar})` : areaVisualizar;
+    
+    // Cambiar fondos dinámicos corporativos usando las clases CSS nativas
+    document.body.className = "text-white font-sans min-h-screen bg-" + areaVisualizar.toLowerCase().replace("é", "e");
+    
+    const menuActions = document.getElementById('sticky-menu-actions');
+    menuActions.innerHTML = "";
+    
+    if(areaVisualizar === 'Monitoreo') {
+      menuActions.innerHTML = `
+        <button onclick="mostrarSubpanel('informe')" class="bg-blue-700 hover:bg-blue-600 px-3 py-1.5 rounded-lg text-xs font-bold"><i class="fa-solid fa-pen"></i> Informe</button>
+        <button onclick="mostrarSubpanel('notificaciones'); cargarNotificacionesMonitoreo();" class="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg text-xs font-bold"><i class="fa-solid fa-bell"></i> Notificaciones</button>
+      `;
+      mostrarSubpanel('informe');
+    } else {
+      menuActions.innerHTML = `
+        <button onclick="mostrarSubpanel('notificaciones'); cargarNotificacionesArea('${areaVisualizar}');" class="bg-blue-700 hover:bg-blue-600 px-3 py-1.5 rounded-lg text-xs font-bold"><i class="fa-solid fa-bell"></i> Notificaciones</button>
+        <button onclick="mostrarSubpanel('busqueda')" class="bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg text-xs font-bold"><i class="fa-solid fa-search"></i> Búsqueda</button>
+      `;
+      mostrarSubpanel('notificaciones');
+      cargarNotificacionesArea(areaVisualizar);
+    }
+  }
+
+  function mostrarSubpanel(idPanel) {
+    document.querySelectorAll('.dashboard-subpanel').forEach(p => p.classList.add('hidden'));
+    document.getElementById('panel-' + idPanel).classList.remove('hidden');
+  }
+
+  function enviarInforme() {
+    const fecha = document.getElementById('inf-fecha').value;
+    const hora = document.getElementById('inf-hora').value;
+    const area = document.getElementById('inf-area').value;
+    const codigo = document.getElementById('inf-codigo').value;
+    const texto = document.getElementById('inf-texto').value;
+    
+    google.script.run.withSuccessHandler(function(res) {
+      showToast(res.message, "success");
+      document.getElementById('inf-texto').value = "";
+      establecerFechaHoraPredeterminada();
+    }).guardarInforme(fecha, hora, area, codigo, texto, usuarioActivo.username);
+  }
+
+  function cargarNotificacionesMonitoreo() {
+    const container = document.getElementById('contenedor-notificaciones');
+    container.innerHTML = "<p class='text-gray-400 text-sm'>Cargando respuestas...</p>";
+    
+    // Si es administrador, simula ver las respuestas mandadas al usuario actual
+    let userQuery = usuarioActivo.username;
+    google.script.run.withSuccessHandler(function(data) {
+      container.innerHTML = "";
+      if(!data || data.length === 0) {
+        container.innerHTML = "<p class='text-gray-500 text-sm p-4 bg-slate-800 rounded-lg'>No hay devoluciones registradas.</p>";
+        return;
+      }
+      data.forEach(item => {
+        container.innerHTML += `
+          <div class="bg-slate-800 p-4 rounded-xl border border-blue-900">
+            <div class="text-xs text-blue-400 font-bold mb-1">EDIFICIO ${item.codigo} - Responde: ${item.area}</div>
+            <p class="text-sm text-gray-200 bg-slate-900 p-2 rounded border border-slate-700">${item.respuesta}</p>
+          </div>
+        `;
+      });
+    }).getNotificacionesMonitoreo(userQuery);
+  }
+
+  function cargarNotificacionesArea(areaViendo) {
+    const container = document.getElementById('contenedor-notificaciones');
+    container.innerHTML = "<p class='text-gray-400 text-sm'>Buscando alertas de monitoreo...</p>";
+    
+    google.script.run.withSuccessHandler(function(data) {
+      container.innerHTML = "";
+      if(!data || data.length === 0) {
+        container.innerHTML = "<p class='text-gray-500 text-sm p-4 bg-slate-800 rounded-lg'>Sin notificaciones pendientes de respuesta.</p>";
+        return;
+      }
+      data.forEach(item => {
+        container.innerHTML += `
+          <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-2">
+            <div class="flex justify-between items-center text-xs text-gray-400">
+              <span><b>F/H:</b> ${item.fecha} - ${item.hora}</span>
+              <span class="text-amber-400 font-bold">Edif: ${item.codigo}</span>
+            </div>
+            <details class="group cursor-pointer bg-slate-900 p-2 rounded">
+              <summary class="text-xs font-semibold text-blue-400 select-none">Ver Texto Libre</summary>
+              <p class="text-xs text-gray-300 mt-2 whitespace-pre-wrap bg-slate-950 p-2 rounded">${item.texto}</p>
+            </details>
+            <div class="pt-2">
+              <textarea id="resp-text-${item.id}" minlength="100" placeholder="Escriba la respuesta obligatoria (Mín. 100 caracteres)..." class="w-full bg-slate-900 text-xs p-2 rounded border border-slate-700 h-16 text-white resize-none"></textarea>
+              <div class="flex justify-end mt-1">
+                <button onclick="enviarRespuesta('${item.id}', '${areaViendo}')" class="bg-emerald-600 hover:bg-emerald-500 px-4 py-1 text-xs font-bold rounded">Responder y Despachar</button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    }).getNotificacionesArea(areaViendo);
+  }
+
+  function enviarRespuesta(idInforme, areaEjecutora) {
+    const texto = document.getElementById('resp-text-' + idInforme).value;
+    if(texto.length < 100) {
+      showToast("La respuesta exige mínimo 100 caracteres. Total actual: " + texto.length, "error");
+      return;
+    }
+    
+    google.script.run.withSuccessHandler(function(res) {
+      showToast(res.message, "success");
+      if(usuarioActivo.area === 'Administrador') {
+        cargarNotificacionesArea(entornoSimuladoAdmin);
+      } else {
+        cargarNotificacionesArea(usuarioActivo.area);
+      }
+    }).responderNotificacion(idInforme, areaEjecutora, texto, usuarioActivo.username);
+  }
+
+  function realizarBusqueda() {
+    const fDesde = document.getElementById('busq-fecha-desde').value;
+    const fHasta = document.getElementById('busq-fecha-hasta').value;
+    const hDesde = document.getElementById('busq-hora-desde').value;
+    const hHasta = document.getElementById('busq-hora-hasta').value;
+    const codigo = document.getElementById('busq-codigo').value;
+    
+    const tbody = document.getElementById('tabla-busqueda-resultados');
+    tbody.innerHTML = "<tr><td colspan='6' class='p-4 text-center text-gray-400'>Buscando...</td></tr>";
+    
+    google.script.run.withSuccessHandler(function(data) {
+      tbody.innerHTML = "";
+      if(!data || data.length === 0) {
+        tbody.innerHTML = "<tr><td colspan='6' class='p-4 text-center text-gray-500'>Ningún registro coincide.</td></tr>";
+        return;
+      }
+      data.forEach(row => {
+        tbody.innerHTML += `
+          <tr class="border-b border-slate-700 hover:bg-slate-700/50">
+            <td class="p-3 font-mono text-gray-500">${row.id.substring(4,10)}...</td>
+            <td class="p-3">${row.fecha}</td>
+            <td class="p-3 font-mono text-blue-400">${row.hora}</td>
+            <td class="p-3 font-bold text-orange-400">${row.codigo}</td>
+            <td class="p-3 text-gray-300">${row.area}</td>
+            <td class="p-3 max-w-xs truncate" title="${row.texto}">${row.texto}</td>
+          </tr>
+        `;
+      });
+      showToast("Búsqueda completada.", "success");
+    }).buscarInformes(fDesde, fHasta, hDesde, hHasta, codigo);
+  }
+
+  function logout() {
+    usuarioActivo = null;
+    document.getElementById('login-user').value = "";
+    document.getElementById('login-pass').value = "";
+    volverHome();
+  }
+</script>

@@ -1,0 +1,25 @@
+<style>
+  #view-home {
+    background: linear-gradient(rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.95)), 
+                url('https://images.unsplash.com/photo-1557597774-9d273605dfa9?auto=format&fit=crop&w=1600&q=80') no-repeat center center/cover;
+  }
+  
+  .bg-monitoreo {
+    background: linear-gradient(rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.95)), 
+                url('https://images.unsplash.com/photo-1541872703-74c5e44368f9?auto=format&fit=crop&w=1600&q=80') no-repeat center center/cover !important;
+  }
+  
+  .bg-operaciones, .bg-tecnica, .bg-comercial, .bg-administrador {
+    background: linear-gradient(rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.95)), 
+                url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1600&q=80') no-repeat center center/cover !important;
+  }
+
+  .bg-blue-rey { background-color: #0041C2; }
+  .text-blue-rey { color: #0041C2; }
+  
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #0f172a; }
+  ::-webkit-scrollbar-thumb { background: #1e3a8a; border-radius: 4px; }
+  
+  .view-section { transition: all 0.3s ease-in-out; }
+</style>
